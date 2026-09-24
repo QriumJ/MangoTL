@@ -25,6 +25,7 @@
         "format:check": "prettier --check ."
     },
     "dependencies": {
+        "@napi-rs/canvas": "1.0.0",
         "@snowfluke/ppu-paddle-ocr": "npm:@jsr/snowfluke__ppu-paddle-ocr@5.4.4",
         "elysia": "^1.4.28",
         "onnxruntime-node": "^1.24.3",

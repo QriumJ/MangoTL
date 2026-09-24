@@ -1,13 +1,15 @@
+import { RENDER_FONT_FAMILY } from "./fonts.js";
+
 /**
  * Draws the translated text directly onto the (already inpainted) canvas, so
  * the server produces a finished image and the extension only has to swap it
  * in. Text is fitted to each detected box with real canvas measurement.
  *
- * NOTE: rendering uses a system Korean font ("Apple SD Gothic Neo"). For
- * non-macOS deployment a font file should be bundled and registered via
- * `GlobalFonts` so output is consistent everywhere.
+ * Rendering prefers the bundled font registered by `ensureRenderFonts` so the
+ * output is identical on every platform; the system families below are only a
+ * fallback for local runs where that download failed.
  */
-const FONT_FAMILY = "'Apple SD Gothic Neo', 'Hiragino Sans', 'Noto Sans JP', 'Noto Sans CJK JP', sans-serif";
+const FONT_FAMILY = `'${RENDER_FONT_FAMILY}', 'Apple SD Gothic Neo', 'Hiragino Sans', 'Noto Sans JP', 'Noto Sans CJK JP', sans-serif`;
 const FONT_WEIGHT = 500;
 const MIN_FONT = 9;
 const MAX_FONT = 200;

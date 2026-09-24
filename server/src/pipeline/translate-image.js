@@ -1,6 +1,7 @@
 import { translateWithOpenAICompatible } from "../ai/openai-compatible.js";
 import { runOcr } from "../ocr/index.js";
 import { analyzeBlockStyles } from "../text/analyze-style.js";
+import { ensureRenderFonts } from "../text/fonts.js";
 import { groupTextBlocks } from "../text/group-blocks.js";
 import { encodeImage, inpaintTextRegions } from "../text/inpaint.js";
 import { renderTranslatedText } from "../text/render-text.js";
@@ -102,6 +103,7 @@ export async function translateImage(request, config, options = {}) {
         // then draw the translation in their place. The extension only has
         // to swap this image over the original.
         inpaintTextRegions(ocr.canvas, blocks);
+        await ensureRenderFonts();
         renderTranslatedText(ocr.canvas, blocks);
         const renderedImage = encodeImage(ocr.canvas);
 
