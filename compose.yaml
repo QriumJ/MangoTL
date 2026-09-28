@@ -1,0 +1,16 @@
+services:
+    mangotl:
+        build: .
+        image: mangotl
+        container_name: mangotl
+        ports:
+            - "8787:8787"
+        volumes:
+            - mangotl-secrets:/app/server/secrets
+            - mangotl-ocr-cache:/app/server/.ocr-cache
+
+volumes:
+    mangotl-secrets:
+        external: true
+    mangotl-ocr-cache:
+        external: true
