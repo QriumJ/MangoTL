@@ -1,3 +1,4 @@
+import { intersectionArea } from "../utils/geometry.js";
 /**
  * Normalizes a raw recognition result into the shape consumed by the
  * translation pipeline: an array of { id, text, confidence, coords }.
@@ -16,10 +17,112 @@ export function normalizeOcrResult(raw, detection, ocrEngineConfig) {
             text: extractText(item),
             confidence: extractConfidence(item),
             coords: extractCoords(item),
+            darkBox: item.darkBox || null,
         }))
         .filter((item) => isUsableOcrItem(item, filters, imageSize));
 
-    return removeOverlappingDuplicates(usableItems);
+    return removeOverlappingDuplicates(removeCompositeReads(usableItems));
+}
+
+function removeCompositeReads(items) {
+    const letters = (value) => String(value).replace(/[^\p{L}\p{N}]/gu, "");
+    const centerInside = (inner, outer) => {
+        const x = inner.x + inner.width / 2;
+        const y = inner.y + inner.height / 2;
+        return x >= outer.x && x <= outer.x + outer.width && y >= outer.y && y <= outer.y + outer.height;
+    };
+    return items.filter((broad) => {
+        const full = letters(broad.text);
+        if (full.length <= 5 && broad.confidence < 0.9) {
+            const coveredByCompleteLine = items.some((complete) => {
+                const line = letters(complete.text);
+                return (
+                    complete !== broad &&
+                    line.length >= 12 &&
+                    complete.confidence >= 0.94 &&
+                    complete.confidence - broad.confidence >= 0.07 &&
+                    rectArea(broad.coords) <= rectArea(complete.coords) * 0.15 &&
+                    intersectionArea(broad.coords, complete.coords) / rectArea(broad.coords) >= 0.95
+                );
+            });
+            if (coveredByCompleteLine) return false;
+        }
+        if (broad.coords.width >= 400 && broad.coords.height >= 500 && full.length >= 12 && broad.confidence < 0.99) {
+            const parts = items.filter((part) => {
+                const fragment = letters(part.text);
+                return (
+                    part !== broad &&
+                    part.confidence >= 0.99 &&
+                    fragment.length >= 3 &&
+                    fragment.length < full.length &&
+                    full.includes(fragment) &&
+                    centerInside(part.coords, broad.coords)
+                );
+            });
+            if (parts.length >= 2 && parts.reduce((count, part) => count + letters(part.text).length, 0) >= full.length * 0.8) return false;
+        }
+        if (!/[?？]/u.test(broad.text) && full.length >= 5 && full.length <= 12) {
+            const straddles = items.some((complete) => {
+                const prefix = letters(complete.text);
+                const tail = full.slice(prefix.length);
+                return (
+                    complete !== broad &&
+                    /[?？]$/u.test(complete.text) &&
+                    complete.confidence >= 0.97 &&
+                    prefix.length >= 4 &&
+                    full.startsWith(prefix) &&
+                    tail.length >= 1 &&
+                    tail.length <= 4 &&
+                    intersectionArea(complete.coords, broad.coords) / rectArea(complete.coords) >= 0.5 &&
+                    items.some(
+                        (next) =>
+                            next !== broad &&
+                            next !== complete &&
+                            next.confidence >= 0.95 &&
+                            letters(next.text).startsWith(tail) &&
+                            next.coords.x + next.coords.width / 2 < complete.coords.x + complete.coords.width / 2,
+                    )
+                );
+            });
+            if (straddles) return false;
+        }
+        if (full.length < 12 || broad.coords.width < 450 || broad.coords.height < 500) return true;
+        const parts = items.filter((part) => {
+            const fragment = letters(part.text);
+            return (
+                part !== broad &&
+                part.confidence >= 0.95 &&
+                fragment.length >= (/[?？]/u.test(part.text) ? 4 : 5) &&
+                fragment.length < full.length &&
+                full.includes(fragment) &&
+                centerInside(part.coords, broad.coords)
+            );
+        });
+        for (let index = 0; index < parts.length; index += 1) {
+            for (let next = index + 1; next < parts.length; next += 1) {
+                const a = parts[index];
+                const b = parts[next];
+                const aText = letters(a.text);
+                const bText = letters(b.text);
+                const dx = Math.abs(a.coords.x + a.coords.width / 2 - b.coords.x - b.coords.width / 2);
+                const dy = Math.abs(a.coords.y + a.coords.height / 2 - b.coords.y - b.coords.height / 2);
+                const overlap = intersectionArea(a.coords, b.coords) / Math.min(rectArea(a.coords), rectArea(b.coords));
+                if (
+                    dx > Math.min(a.coords.width, b.coords.width) * 0.45 &&
+                    dy > Math.min(a.coords.height, b.coords.height) * 0.35 &&
+                    overlap < 0.3 &&
+                    aText.length + bText.length >= full.length * 0.75 &&
+                    (full.includes(aText + bText) ||
+                        full.includes(bText + aText) ||
+                        (full.startsWith(aText) && full.endsWith(bText) && full.length - aText.length - bText.length <= 4) ||
+                        (full.startsWith(bText) && full.endsWith(aText) && full.length - aText.length - bText.length <= 4))
+                ) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    });
 }
 
 function isUsableOcrItem(item, filters, imageSize) {
@@ -29,7 +132,49 @@ function isUsableOcrItem(item, filters, imageSize) {
         return false;
     }
 
+    if (
+        item.coords?.height > 400 &&
+        (item.confidence ?? 0) < 0.85 &&
+        [...text].filter((character) => /\p{L}/u.test(character)).length <= 1 &&
+        [...text].filter((character) => /[.。…]/u.test(character)).length >= 3
+    ) {
+        return false;
+    }
+
+    if (/(\p{L})\1{9,}/u.test(text)) {
+        return false;
+    }
+
+    // Sparse illustration strokes occasionally read as an isolated two- or
+    // three-kana word. At low confidence this erases the drawing and inserts a
+    // stray word in the translated page. A real utterance is usually longer,
+    // carries punctuation, or is read with higher confidence.
+    if (/^[\p{Script=Hiragana}\p{Script=Katakana}]{1,3}$/u.test(text) && (item.confidence ?? 0) < 0.78) {
+        return false;
+    }
+
+    if (
+        /^[\p{Script=Hiragana}\p{Script=Katakana}][、，]$/u.test(text) &&
+        (item.confidence ?? 0) < 0.93 &&
+        item.coords?.height > item.coords?.width * 2
+    ) {
+        return false;
+    }
+
+    if (
+        /[A-Za-z]/u.test(text) &&
+        /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text) &&
+        [...text].filter((character) => /\p{L}/u.test(character)).length <= 3 &&
+        (item.confidence ?? 0) < 0.85
+    ) {
+        return false;
+    }
+
     if (!item.coords) {
+        return false;
+    }
+
+    if (text.length === 1 && item.coords.height < 20 && item.coords.width > item.coords.height * 3 && (item.confidence ?? 0) < 0.9) {
         return false;
     }
 
@@ -139,12 +284,96 @@ function removeOverlappingDuplicates(items) {
     const kept = [];
 
     for (const item of [...items].sort(compareOcrQuality)) {
-        if (!kept.some((candidate) => isDuplicateRegion(candidate.coords, item.coords))) {
+        let discard = false;
+
+        for (let index = kept.length - 1; index >= 0; index -= 1) {
+            const candidate = kept[index];
+            if (!isDuplicateRegion(candidate.coords, item.coords)) {
+                continue;
+            }
+
+            const longer = richerContainingRead(candidate, item);
+            if (longer === item) {
+                kept.splice(index, 1);
+            } else {
+                discard = true;
+                break;
+            }
+        }
+
+        if (!discard) {
             kept.push(item);
         }
     }
 
     return kept.sort((a, b) => ocrItemOrder(a) - ocrItemOrder(b));
+}
+
+function richerContainingRead(a, b) {
+    const aLetters = [...a.text].filter((character) => /\p{L}|\p{N}/u.test(character));
+    const bLetters = [...b.text].filter((character) => /\p{L}|\p{N}/u.test(character));
+    if (aLetters.join("") === bLetters.join("")) {
+        const punctuated = /[?？!！]$/u.test(a.text) ? a : /[?？!！]$/u.test(b.text) ? b : null;
+        if (punctuated) {
+            const other = punctuated === a ? b : a;
+            const overlap = intersectionArea(a.coords, b.coords) / Math.min(rectArea(a.coords), rectArea(b.coords));
+            if (!/[?？!！]$/u.test(other.text) && overlap >= 0.65 && (punctuated.confidence ?? 0) >= (other.confidence ?? 0) - 0.03) {
+                return punctuated;
+            }
+        }
+    }
+    if (a.darkBox !== b.darkBox && aLetters.join("") === bLetters.join("")) {
+        const enclosed = a.darkBox ? a : b;
+        const broad = enclosed === a ? b : a;
+        if ((enclosed.confidence ?? 0) >= (broad.confidence ?? 0) - 0.05) {
+            return enclosed;
+        }
+    }
+    const moreComplete = aLetters.length >= bLetters.length ? a : b;
+    const lessComplete = moreComplete === a ? b : a;
+    const overlapRatio = intersectionArea(a.coords, b.coords) / Math.min(rectArea(a.coords), rectArea(b.coords));
+    if (
+        overlapRatio >= 0.65 &&
+        Math.min(aLetters.length, bLetters.length) >= 5 &&
+        Math.max(aLetters.length, bLetters.length) > Math.min(aLetters.length, bLetters.length) &&
+        isTextSubsequence(lessComplete === a ? aLetters : bLetters, moreComplete === a ? aLetters : bLetters) &&
+        (moreComplete.confidence ?? 0) >= 0.9 &&
+        (moreComplete.confidence ?? 0) >= (lessComplete.confidence ?? 0) - 0.06
+    ) {
+        return moreComplete;
+    }
+
+    const aText = a.text.replace(/\s+/g, "");
+    const bText = b.text.replace(/\s+/g, "");
+    const aArea = rectArea(a.coords);
+    const bArea = rectArea(b.coords);
+    const larger = aArea >= bArea ? a : b;
+    const smaller = larger === a ? b : a;
+    const largerText = larger === a ? aText : bText;
+    const smallerText = smaller === a ? aText : bText;
+    const overlap = intersectionArea(a.coords, b.coords);
+
+    if (
+        (aArea / bArea < 4 && bArea / aArea < 4) ||
+        overlap / Math.min(aArea, bArea) < 0.8 ||
+        largerText.length <= smallerText.length ||
+        !isTextSubsequence(smallerText, largerText) ||
+        (larger.confidence ?? 0) < 0.8
+    ) {
+        return null;
+    }
+
+    return larger;
+}
+
+function isTextSubsequence(shortText, longText) {
+    let cursor = 0;
+    for (const character of longText) {
+        if (character === shortText[cursor]) {
+            cursor += 1;
+        }
+    }
+    return cursor === shortText.length;
 }
 
 function compareOcrQuality(a, b) {
@@ -160,7 +389,11 @@ function ocrQualityScore(item) {
     const lengthScore = Math.min(1, letters / 48);
     const areaScore = Math.min(1, Math.sqrt(area) / 260);
     const punctuationPenalty = compact.length > 0 ? (punctuation / compact.length) * 0.18 : 0;
-    const noisyTailPenalty = /[・.。…]{4,}|[「『(（]$|[A-Za-z]*[♀♂]+/u.test(compact) ? 0.16 : 0;
+    const noisyTailPenalty =
+        /[・.。…]{4,}$|[「『(（]$|[A-Za-z]*[♀♂]+/u.test(compact) ||
+        (punctuation / Math.max(1, compact.length) > 0.45 && /[・.。…]{4,}/u.test(compact))
+            ? 0.16
+            : 0;
 
     return confidence * 3 + lengthScore * 0.16 + areaScore * 0.05 - punctuationPenalty - noisyTailPenalty;
 }
@@ -174,12 +407,6 @@ function isDuplicateRegion(a, b) {
 
     const smallerArea = Math.min(rectArea(a), rectArea(b));
     return smallerArea > 0 && overlap / smallerArea > 0.45;
-}
-
-function intersectionArea(a, b) {
-    const width = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-    const height = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-    return width * height;
 }
 
 function rectArea(rect) {

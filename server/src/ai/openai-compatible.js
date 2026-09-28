@@ -38,12 +38,64 @@ export async function translateWithOpenAICompatible({ provider, model, sourceLan
         signal,
     });
 
-    return translations.map((translation) => ({
+    const byId = new Map(translations.map((translation) => [String(translation.id), translation]));
+
+    for (const block of blocks) {
+        const current = byId.get(String(block.id));
+        if (current && !isUntranslatedText(block.sourceText, current.translatedText || current.text, targetLanguage)) {
+            continue;
+        }
+
+        try {
+            const retry = await requestTranslationsWithRetry({
+                endpointUrl,
+                apiKey: resolvedApiKey,
+                provider,
+                model,
+                messages: buildTranslationMessages({ sourceLanguage, targetLanguage, blocks: [block] }),
+                signal,
+            });
+            const replacement = retry.translations.find((translation) => String(translation.id) === String(block.id));
+            if (replacement && !isUntranslatedText(block.sourceText, replacement.translatedText || replacement.text, targetLanguage)) {
+                byId.set(String(block.id), replacement);
+            }
+        } catch (error) {
+            if (signal?.aborted) {
+                throw error;
+            }
+            console.warn(`[MangoTL] Could not retry block ${block.id}: ${error.message}`);
+        }
+    }
+
+    return [...byId.values()].map((translation) => ({
         id: String(translation.id),
         translatedText: String(translation.translatedText || translation.text || "").trim(),
         type: translation.type || null,
         direction: translation.direction || null,
     }));
+}
+
+export function isUntranslatedText(sourceText, translatedText, targetLanguage) {
+    const source = String(sourceText || "").replace(/\s+/g, "");
+    const translated = String(translatedText || "").replace(/\s+/g, "");
+
+    if (!translated) {
+        return Boolean(source);
+    }
+
+    if (source && source === translated) {
+        return true;
+    }
+
+    if (targetLanguage === "ko") {
+        return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(translated) && !/\p{Script=Hangul}/u.test(translated);
+    }
+
+    if (["en", "de", "sv"].includes(targetLanguage)) {
+        return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}\p{Script=Hangul}]/u.test(translated) && !/[A-Za-z]/u.test(translated);
+    }
+
+    return false;
 }
 
 async function requestTranslationsWithRetry({ endpointUrl, apiKey, provider, model, messages, signal }) {

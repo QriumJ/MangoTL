@@ -1,3 +1,8 @@
+import { eraseAttachedOvalLettering, eraseSmallOvalLongVowel } from "./oval-repair.js";
+import { eraseOutlinedArtCaption } from "../art-caption.js";
+import { eraseOutlinedFootstep, eraseSplitEffectInk, erasePastelBadgeInk, eraseOutlinedEffectInk, eraseTinyLabelInk } from "./effects.js";
+import { clamp, hasLightTextSurface, isLightBackground, isDarkBackground, parseHexColor } from "./shared.js";
+
 /**
  * Removes the original text from the source image so the translation can be
  * laid over a clean background — no covering rectangle.
@@ -11,7 +16,7 @@
  *
  * `inpaintTextRegions` mutates the canvas in place; `encodeImage` exports it.
  */
-export function inpaintTextRegions(canvas, blocks) {
+export function inpaintTextRegions(canvas, blocks, restoredIds = new Set()) {
     let ctx;
 
     try {
@@ -21,6 +26,7 @@ export function inpaintTextRegions(canvas, blocks) {
     }
 
     for (const block of blocks || []) {
+        if (restoredIds.has(block.id)) continue;
         try {
             inpaintBlock(ctx, canvas.width, canvas.height, block);
         } catch {
@@ -41,16 +47,55 @@ export function encodeImage(canvas) {
 const REGION_SIMILARITY = 26;
 
 function inpaintBlock(ctx, canvasWidth, canvasHeight, block) {
+    if (block.footstepEffect && eraseOutlinedFootstep(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (block.confirmedRepeatedEffect && eraseSplitEffectInk(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (block.artCaption && eraseOutlinedArtCaption(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (block.darkOutlinedEffect) {
+        const box = block.eraseCoords || block.coords;
+        ctx.fillStyle = block.style?.background || "#353535";
+        ctx.fillRect(Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height));
+        return;
+    }
+    if (block.outlinedEffect && eraseOutlinedEffectInk(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (block.pastelBadge && erasePastelBadgeInk(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (block.tinyLabel && eraseTinyLabelInk(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (eraseSmallOvalLongVowel(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
+    if (eraseAttachedOvalLettering(ctx, canvasWidth, canvasHeight, block)) {
+        return;
+    }
     // Pad the box just enough to catch a glyph's anti-aliased spill past the
     // detected bounds. A wider pad risks swallowing a separate nearby caption.
-    const margin = 12;
+    const shortLightLettering =
+        block.coords.width <= 200 && block.coords.height <= 200 && String(block.originalText || "").replace(/\s+/gu, "").length <= 5;
+    const lightBubble =
+        isLightBackground(block.style?.background) && (block.style?.bubbleBox || shortLightLettering || hasLightTextSurface(ctx, block.coords));
+    const darkBubble = block.darkBox && isDarkBackground(block.style?.background);
+    const coloredBubble = block.darkBox && !darkBubble;
+    const pageScale = Math.sqrt((canvasWidth * canvasHeight) / (864 * 1200));
+    const margin = lightBubble || darkBubble || coloredBubble ? Math.max(24, Math.round(32 * pageScale)) : 12;
     const coords = block.eraseCoords || block.coords;
+    const trailingHandwrittenDots =
+        isLightBackground(block.style?.background) && coords.height > coords.width * 1.15 ? Math.max(20, Math.round(8 * pageScale)) : 0;
     const boxX = Math.round(coords.x);
     const boxY = Math.round(coords.y);
     const x = clamp(boxX - margin, 0, canvasWidth - 1);
     const y = clamp(boxY - margin, 0, canvasHeight - 1);
     const width = clamp(Math.round(coords.width) + (boxX - x) + margin, 1, canvasWidth - x);
-    const height = clamp(Math.round(coords.height) + (boxY - y) + margin, 1, canvasHeight - y);
+    const height = clamp(Math.round(coords.height) + trailingHandwrittenDots + (boxY - y) + margin, 1, canvasHeight - y);
 
     if (width < 3 || height < 3) {
         return;
@@ -61,11 +106,17 @@ function inpaintBlock(ctx, canvasWidth, canvasHeight, block) {
         x: boxX - x,
         y: boxY - y,
         width: Math.round(coords.width),
-        height: Math.round(coords.height),
+        height: Math.round(coords.height) + trailingHandwrittenDots,
     };
 
     const imageData = ctx.getImageData(x, y, width, height);
     const pixelCount = width * height;
+
+    if (lightBubble || darkBubble || coloredBubble) {
+        eraseIsolatedBubbleInk(imageData.data, width, height, innerBox, block.style.background, margin, darkBubble || coloredBubble, coloredBubble);
+        ctx.putImageData(imageData, x, y);
+        return;
+    }
 
     // The region to reconstruct from: the largest connected run of pixels
     // joined by local similarity that touches the detected box. This finds the
@@ -106,6 +157,107 @@ function inpaintBlock(ctx, canvasWidth, canvasHeight, block) {
 
     reconstruct(imageData.data, mask, interior, width, height, background);
     ctx.putImageData(imageData, x, y);
+}
+
+function eraseIsolatedBubbleInk(data, width, height, innerBox, backgroundHex, margin, darkText = false, outlinedText = false) {
+    const background = parseHexColor(backgroundHex);
+    const visited = new Uint8Array(width * height);
+    const erase = new Uint8Array(width * height);
+    const isGlyph = (index) => {
+        const offset = index * 4;
+        const brightness = (data[offset] + data[offset + 1] + data[offset + 2]) / 3;
+        return darkText ? brightness > 180 : brightness < 190;
+    };
+
+    for (let seed = 0; seed < width * height; seed += 1) {
+        if (visited[seed] || !isGlyph(seed)) {
+            continue;
+        }
+
+        const stack = [seed];
+        const component = [];
+        visited[seed] = 1;
+        let minX = width;
+        let maxX = 0;
+        let minY = height;
+        let maxY = 0;
+        let touchesEdge = false;
+        let touchesTextBox = false;
+
+        while (stack.length) {
+            const index = stack.pop();
+            const px = index % width;
+            const py = (index / width) | 0;
+            component.push(index);
+            minX = Math.min(minX, px);
+            maxX = Math.max(maxX, px);
+            minY = Math.min(minY, py);
+            maxY = Math.max(maxY, py);
+            touchesEdge ||= px === 0 || py === 0 || px === width - 1 || py === height - 1;
+            touchesTextBox ||=
+                px >= innerBox.x - 8 && px < innerBox.x + innerBox.width + 8 && py >= innerBox.y - 8 && py < innerBox.y + innerBox.height + 8;
+
+            for (const neighbor of [
+                px > 0 ? index - 1 : -1,
+                px < width - 1 ? index + 1 : -1,
+                py > 0 ? index - width : -1,
+                py < height - 1 ? index + width : -1,
+            ]) {
+                if (neighbor >= 0 && !visited[neighbor] && isGlyph(neighbor)) {
+                    visited[neighbor] = 1;
+                    stack.push(neighbor);
+                }
+            }
+        }
+
+        if (touchesEdge || !touchesTextBox || maxX - minX > width * 0.7 || maxY - minY > height * 0.7) {
+            continue;
+        }
+        if (
+            !darkText &&
+            innerBox.width <= 200 &&
+            innerBox.height <= 200 &&
+            (minX < innerBox.x - 8 || maxX > innerBox.x + innerBox.width + 8 || minY < innerBox.y - 8 || maxY > innerBox.y + innerBox.height + 8)
+        ) {
+            continue;
+        }
+        if (!darkText && (maxX - minX > Math.max(140, innerBox.width * 0.45) || maxY - minY > Math.max(160, innerBox.height * 0.5))) {
+            continue;
+        }
+
+        if (outlinedText) {
+            for (let py = Math.max(0, minY - 3); py <= Math.min(height - 1, maxY + 3); py += 1) {
+                for (let px = Math.max(0, minX - 3); px <= Math.min(width - 1, maxX + 3); px += 1) {
+                    erase[py * width + px] = 1;
+                }
+            }
+            continue;
+        }
+
+        for (const index of component) {
+            const px = index % width;
+            const py = (index / width) | 0;
+            for (let dy = -2; dy <= 2; dy += 1) {
+                for (let dx = -2; dx <= 2; dx += 1) {
+                    const nx = px + dx;
+                    const ny = py + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        erase[ny * width + nx] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    for (let index = 0; index < erase.length; index += 1) {
+        if (!erase[index]) {
+            continue;
+        }
+        const offset = index * 4;
+        data[offset] = background[0];
+        data[offset + 1] = background[1];
+        data[offset + 2] = background[2];
+    }
 }
 
 /** Iterative 4-connected flood fill; returns a visited mask. */
@@ -437,8 +589,4 @@ function reconstruct(data, fillMask, knownMask, width, height, background) {
     function anchored(index) {
         return knownMask[index] === 1 || fillMask[index] === 1;
     }
-}
-
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
 }

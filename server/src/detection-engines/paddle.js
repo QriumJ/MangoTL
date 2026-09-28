@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-node";
 import { DetectionService } from "@snowfluke/ppu-paddle-ocr";
-import { fetchAndCacheModel } from "../utils/model-cache.js";
+import { fetchAndCacheModelPath } from "../utils/model-cache.js";
+import { ortSessionOptions } from "../utils/ort-options.js";
 import { HttpError } from "../utils/http-error.js";
 
 const LOG = "[MangoTL-Detection-Paddle]";
@@ -36,9 +37,10 @@ async function getDetector(config) {
         }
 
         console.log(`${LOG} Initializing PaddleOCR detection...`);
-        const modelBuffer = await fetchAndCacheModel(modelUrl, `paddle-det-${basename(modelUrl)}`, LOG);
+        // 경로로 생성해야 가중치가 mmap로 올라가 세션 메모리가 크게 줄어든다
+        const modelPath = await fetchAndCacheModelPath(modelUrl, `paddle-det-${basename(modelUrl)}`, LOG);
 
-        const session = await ort.InferenceSession.create(modelBuffer, { executionProviders: ["cpu"] });
+        const session = await ort.InferenceSession.create(modelPath, ortSessionOptions());
         console.log(`${LOG} Detection session ready (input: ${session.inputNames}, output: ${session.outputNames})`);
 
         const engine = config.processing?.engine || "canvas-native";

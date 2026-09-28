@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-node";
 import { RecognitionService } from "@snowfluke/ppu-paddle-ocr";
-import { fetchAndCacheModel } from "../../utils/model-cache.js";
+import { fetchAndCacheModel, fetchAndCacheModelPath } from "../../utils/model-cache.js";
+import { ortSessionOptions } from "../../utils/ort-options.js";
 import { HttpError } from "../../utils/http-error.js";
 
 const LOG = "[MangoTL-OCR-Paddle]";
@@ -42,12 +43,13 @@ async function getRecognizer(config) {
         const language = model.language || "default";
         console.log(`${LOG} Initializing recognition (language: ${language})...`);
 
-        const [recognitionBuffer, dictionaryBuffer] = await Promise.all([
-            fetchAndCacheModel(recognitionUrl, `paddle-rec-${language}-${basename(recognitionUrl)}`, LOG),
+        // 인식 세션은 경로로 생성해 가중치를 mmap로 올린다(사전은 텍스트라 버퍼 유지)
+        const [recognitionPath, dictionaryBuffer] = await Promise.all([
+            fetchAndCacheModelPath(recognitionUrl, `paddle-rec-${language}-${basename(recognitionUrl)}`, LOG),
             fetchAndCacheModel(dictionaryUrl, `paddle-dict-${language}-${basename(dictionaryUrl)}`, LOG),
         ]);
 
-        const session = await ort.InferenceSession.create(recognitionBuffer, { executionProviders: ["cpu"] });
+        const session = await ort.InferenceSession.create(recognitionPath, ortSessionOptions());
         const dictionary = dictionaryBuffer.toString("utf-8").split("\n");
         console.log(`${LOG} Recognition session ready (${dictionary.length} dictionary entries)`);
 

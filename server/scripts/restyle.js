@@ -10,7 +10,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createCanvas, loadImage } from "ppu-ocv/canvas";
 import { analyzeBlockStyles } from "../src/text/analyze-style.js";
-import { encodeImage, inpaintTextRegions } from "../src/text/inpaint.js";
+import { encodeImage, inpaintTextRegions } from "../src/text/inpaint/index.js";
 import { renderTranslatedText } from "../src/text/render-text.js";
 
 const translationPath = process.argv[2] || "test-images/tmp";

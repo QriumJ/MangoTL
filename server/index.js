@@ -154,7 +154,7 @@ const app = new Elysia()
             const startTime = Date.now();
 
             try {
-                const result = await translateImage(request, config);
+                const result = await translateImage(request, config, { bypassCache: request.bypassCache });
                 const duration = Date.now() - startTime;
 
                 console.log("[MangoTL] Translation completed:", {
@@ -183,6 +183,7 @@ const app = new Elysia()
                 target: t.Optional(t.String()),
                 source: t.Optional(t.String()),
                 dryRun: t.Optional(t.String()),
+                bypassCache: t.Optional(t.String()),
                 websiteId: t.Optional(t.String()),
                 website: t.Optional(t.String()),
             }),

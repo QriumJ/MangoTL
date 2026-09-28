@@ -7,20 +7,34 @@ const cacheRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const inFlight = new Map();
 
 /**
- * Downloads a model resource and caches it under server/.ocr-cache.
- * Concurrent requests for the same file share a single download.
+ * 모델 리소스를 다운로드해 server/.ocr-cache에 캐시한다.
+ * 같은 파일에 대한 동시 요청은 하나의 다운로드를 공유한다.
  */
 export async function fetchAndCacheModel(url, fileName, logPrefix = "[MangoTL-OCR]") {
+    const cachePath = await ensureCachedModel(url, fileName, logPrefix);
+    return readFile(cachePath);
+}
+
+/**
+ * 모델이 캐시된 파일 경로만 반환한다. ONNX Runtime 세션은 경로로 생성해야
+ * 가중치가 mmap로 올라가 Buffer 복사분만큼 메모리가 절약된다.
+ */
+export function fetchAndCacheModelPath(url, fileName, logPrefix = "[MangoTL-OCR]") {
+    return ensureCachedModel(url, fileName, logPrefix);
+}
+
+async function ensureCachedModel(url, fileName, logPrefix) {
     const cachePath = path.join(cacheRoot, sanitizeFileName(fileName));
 
     if (existsSync(cachePath)) {
         console.log(`${logPrefix} Using cached model: ${fileName}`);
-        return readFile(cachePath);
+        return cachePath;
     }
 
     const pending = inFlight.get(cachePath);
     if (pending) {
-        return pending;
+        await pending;
+        return cachePath;
     }
 
     const download = (async () => {
@@ -49,15 +63,15 @@ export async function fetchAndCacheModel(url, fileName, logPrefix = "[MangoTL-OC
         }
 
         console.log(`${logPrefix} Cached model: ${cachePath} (${buffer.byteLength} bytes)`);
-        return buffer;
     })();
 
     inFlight.set(cachePath, download);
-    download.then(
-        () => inFlight.delete(cachePath),
-        () => inFlight.delete(cachePath),
-    );
-    return download;
+    try {
+        await download;
+    } finally {
+        inFlight.delete(cachePath);
+    }
+    return cachePath;
 }
 
 function sanitizeFileName(fileName) {

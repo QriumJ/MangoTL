@@ -26,6 +26,7 @@ export async function normalizeTranslateRequest(body, query = {}, config = {}) {
         sourceLanguage,
         websiteId: website?.id || websiteId || null,
         dryRun: isTruthyFlag(query.dryRun) || isTruthyFlag(body?.dryRun),
+        bypassCache: isTruthyFlag(query.bypassCache) || isTruthyFlag(body?.bypassCache),
     };
 }
 
