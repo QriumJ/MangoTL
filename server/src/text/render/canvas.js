@@ -1,5 +1,5 @@
-import { RENDER_FONT_FAMILY } from "./fonts.js";
-import { findLightSurfaceColumnBox } from "./light-surface.js";
+import { RENDER_FONT_FAMILY } from "../fonts.js";
+import { findLightSurfaceColumnBox } from "../light-surface.js";
 
 /**
  * Draws the translated text directly onto the (already inpainted) canvas, so

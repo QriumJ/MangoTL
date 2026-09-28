@@ -8,6 +8,13 @@
         "security": {
             "maxImageBytes": 20971520
         },
+        "pipeline": {
+            "inpaint": {
+                "erase": "local",
+                "restore": "lama"
+            },
+            "render": "canvas"
+        },
         "languages": {
             "source": "ja",
             "target": "ko",

@@ -1,4 +1,5 @@
 import { buildTranslationMessages } from "../text/prompt.js";
+import { isUntranslatedText } from "./shared.js";
 import { HttpError } from "../utils/http-error.js";
 
 const MAX_TRANSLATION_ATTEMPTS = 2;
@@ -73,29 +74,6 @@ export async function translateWithOpenAICompatible({ provider, model, sourceLan
         type: translation.type || null,
         direction: translation.direction || null,
     }));
-}
-
-export function isUntranslatedText(sourceText, translatedText, targetLanguage) {
-    const source = String(sourceText || "").replace(/\s+/g, "");
-    const translated = String(translatedText || "").replace(/\s+/g, "");
-
-    if (!translated) {
-        return Boolean(source);
-    }
-
-    if (source && source === translated) {
-        return true;
-    }
-
-    if (targetLanguage === "ko") {
-        return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(translated) && !/\p{Script=Hangul}/u.test(translated);
-    }
-
-    if (["en", "de", "sv"].includes(targetLanguage)) {
-        return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}\p{Script=Hangul}]/u.test(translated) && !/[A-Za-z]/u.test(translated);
-    }
-
-    return false;
 }
 
 async function requestTranslationsWithRetry({ endpointUrl, apiKey, provider, model, messages, signal }) {

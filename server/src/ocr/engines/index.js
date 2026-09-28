@@ -1,20 +1,17 @@
-import { recognizeWithPaddle } from "./paddle.js";
-import { recognizeWithMangaOcr } from "./mangaocr/index.js";
 import { HttpError } from "../../utils/http-error.js";
 
 const LOG = "[MangoTL-OCR]";
 
 /**
- * Registered OCR recognition engines.
- * Engine selection is resolved in the pipeline from language routing config
- * and each engine's declared language support.
+ * OCR 인식 엔진 type → 구현 로더 레지스트리. 지연 로딩이라 선택되지 않은
+ * 엔진의 모듈(ONNX 세션 포함)은 로드되지 않는다.
  *
- * Adding an engine = drop in an implementation module, add one entry here,
- * and add a config JSON. No pipeline code changes needed.
+ * 새 엔진 추가 = 구현 모듈 + 여기 한 줄 + config/ocr-engines/*.json.
+ * capabilities에 `supplementalReads`를 선언하면 보조 크롭 읽기가 활성화된다.
  */
 const ENGINES = {
-    paddle: { recognize: recognizeWithPaddle },
-    mangaocr: { recognize: recognizeWithMangaOcr, supplementalReads: true },
+    paddle: { load: async () => (await import("./paddle.js")).recognizeWithPaddle },
+    mangaocr: { load: async () => (await import("./mangaocr/index.js")).recognizeWithMangaOcr, supplementalReads: true },
 };
 
 /**
@@ -39,5 +36,6 @@ export async function recognize(detection, ocrEngineConfig, options = {}) {
         throw new HttpError(400, "ocr_engine_not_supported", `Unsupported OCR engine: ${ocrEngineConfig.type}`);
     }
 
-    return engine.recognize(detection, ocrEngineConfig, options);
+    const run = await engine.load();
+    return run(detection, ocrEngineConfig, options);
 }

@@ -43,6 +43,7 @@ export async function loadStaticServerConfig() {
             targetLanguage: app.languages?.target || null,
         },
         languageSettings: app.languages || {},
+        pipeline: app.pipeline || null,
         providers,
         ocrEngines,
         detectionEngines,

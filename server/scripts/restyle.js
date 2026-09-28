@@ -10,8 +10,9 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createCanvas, loadImage } from "ppu-ocv/canvas";
 import { analyzeBlockStyles } from "../src/text/analyze-style.js";
-import { encodeImage, inpaintTextRegions } from "../src/text/inpaint/index.js";
-import { renderTranslatedText } from "../src/text/render-text.js";
+import { encodeImage } from "../src/utils/encode-image.js";
+import { inpaintTextRegions } from "../src/text/inpaint/local.js";
+import { renderTranslatedText } from "../src/text/render/canvas.js";
 
 const translationPath = process.argv[2] || "test-images/tmp";
 const fixturePath = process.argv[3] || "test-images/tmp/restyle-fixture.json";

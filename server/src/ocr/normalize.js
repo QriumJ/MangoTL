@@ -1,15 +1,21 @@
 import { intersectionArea } from "../utils/geometry.js";
+import { scriptProfileFor } from "./script-profiles.js";
+
 /**
  * Normalizes a raw recognition result into the shape consumed by the
  * translation pipeline: an array of { id, text, confidence, coords }.
  *
  * Recognition engines (paddle, mangaocr) return:
  *   [{ text, box, confidence }]
+ *
+ * options.sourceLanguage가 주어지면 해당 언어의 스크립트 프로필 필터가
+ * 추가로 적용된다 — 다른 언어의 텍스트에는 일본어 특화 규칙이 발동하지 않는다.
  */
-export function normalizeOcrResult(raw, detection, ocrEngineConfig) {
+export function normalizeOcrResult(raw, detection, ocrEngineConfig, options = {}) {
     const items = Array.isArray(raw) ? raw : [];
     const filters = ocrEngineConfig.filters || {};
     const imageSize = { width: detection.width, height: detection.height };
+    const script = scriptProfileFor(options.sourceLanguage);
 
     const usableItems = items
         .map((item, index) => ({
@@ -19,7 +25,7 @@ export function normalizeOcrResult(raw, detection, ocrEngineConfig) {
             coords: extractCoords(item),
             darkBox: item.darkBox || null,
         }))
-        .filter((item) => isUsableOcrItem(item, filters, imageSize));
+        .filter((item) => isUsableOcrItem(item, filters, imageSize, script));
 
     return removeOverlappingDuplicates(removeCompositeReads(usableItems));
 }
@@ -125,7 +131,7 @@ function removeCompositeReads(items) {
     });
 }
 
-function isUsableOcrItem(item, filters, imageSize) {
+function isUsableOcrItem(item, filters, imageSize, script) {
     const text = item.text.replace(/\s+/g, "");
 
     if (!text) {
@@ -149,21 +155,17 @@ function isUsableOcrItem(item, filters, imageSize) {
     // three-kana word. At low confidence this erases the drawing and inserts a
     // stray word in the translated page. A real utterance is usually longer,
     // carries punctuation, or is read with higher confidence.
-    if (/^[\p{Script=Hiragana}\p{Script=Katakana}]{1,3}$/u.test(text) && (item.confidence ?? 0) < 0.78) {
+    if (script.shortSyllabaryWord?.test(text) && (item.confidence ?? 0) < 0.78) {
         return false;
     }
 
-    if (
-        /^[\p{Script=Hiragana}\p{Script=Katakana}][、，]$/u.test(text) &&
-        (item.confidence ?? 0) < 0.93 &&
-        item.coords?.height > item.coords?.width * 2
-    ) {
+    if (script.syllabaryComma && script.syllabaryComma.test(text) && (item.confidence ?? 0) < 0.93 && item.coords?.height > item.coords?.width * 2) {
         return false;
     }
 
     if (
         /[A-Za-z]/u.test(text) &&
-        /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text) &&
+        script.syllabary?.test(text) &&
         [...text].filter((character) => /\p{L}/u.test(character)).length <= 3 &&
         (item.confidence ?? 0) < 0.85
     ) {

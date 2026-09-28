@@ -1,8 +1,16 @@
 import { createCanvas, loadImage } from "ppu-ocv/canvas";
-import { detectWithPaddle } from "./paddle.js";
 import { HttpError } from "../utils/http-error.js";
 
 const LOG = "[MangoTL-Detection]";
+
+/**
+ * 탐지 엔진 type → 구현 로더 레지스트리. 지연 로딩이라 선택되지 않은
+ * 엔진의 모듈(ONNX 포함)은 로드되지 않는다.
+ * 새 엔진 추가 = 구현 모듈 + 여기 한 줄 + config/detection-engines/*.json.
+ */
+const DETECTORS = {
+    paddle: async () => (await import("./paddle.js")).detectWithPaddle,
+};
 
 /**
  * Detects text regions in an image. Detection is engine-agnostic and shared
@@ -13,14 +21,14 @@ const LOG = "[MangoTL-Detection]";
 export async function runDetection(image, detectionEngineConfig) {
     console.log(`${LOG} Running detection with engine: ${detectionEngineConfig.id} (type: ${detectionEngineConfig.type})`);
 
-    const canvas = await prepareCanvas(image);
-
-    let boxes;
-    if (detectionEngineConfig.type === "paddle") {
-        boxes = await detectWithPaddle(canvas, detectionEngineConfig);
-    } else {
+    const load = DETECTORS[detectionEngineConfig.type];
+    if (!load) {
         throw new HttpError(400, "detection_engine_not_supported", `Unsupported detection engine: ${detectionEngineConfig.type}`);
     }
+
+    const canvas = await prepareCanvas(image);
+    const detect = await load();
+    const boxes = await detect(canvas, detectionEngineConfig);
 
     return { canvas, boxes, width: canvas.width, height: canvas.height };
 }

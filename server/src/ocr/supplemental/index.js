@@ -80,6 +80,7 @@ export async function recoverSupplementalText(image, detection, raw, normalized,
             extraRaw.map((item) => ({ ...item, text: normalizeHandwrittenEffect(item.text) })),
             detection,
             ocrEngineConfig,
+            { sourceLanguage: options.sourceLanguage },
         ).filter((item) => {
             const kana = String(item.text).match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu) || [];
             return item.confidence >= 0.95 && kana.length >= 2 && !/(.)\1{6,}/u.test(item.text);
@@ -116,7 +117,7 @@ export async function recoverSupplementalText(image, detection, raw, normalized,
     const smallCandidates = findSupplementalSmallEffects(detection.boxes, highResolution.boxes, normalized, detection.width, detection.height);
     if (smallCandidates.length > 0) {
         const smallRaw = await readCrops(smallCandidates);
-        const small = normalizeOcrResult(smallRaw, detection, ocrEngineConfig).filter((item) => {
+        const small = normalizeOcrResult(smallRaw, detection, ocrEngineConfig, { sourceLanguage: options.sourceLanguage }).filter((item) => {
             const kana = String(item.text).match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu) || [];
             return item.confidence >= 0.93 && kana.length >= 2 && item.text.length <= 5;
         });
@@ -129,7 +130,7 @@ export async function recoverSupplementalText(image, detection, raw, normalized,
     const tinyCandidates = findSupplementalTinyLabels(detection.boxes, highResolution.boxes, normalized, detection.width, detection.height);
     if (tinyCandidates.length > 0) {
         const tinyRaw = await readCrops(tinyCandidates.map((candidate) => candidate.box));
-        const tiny = normalizeOcrResult(tinyRaw, detection, ocrEngineConfig).filter((item) => {
+        const tiny = normalizeOcrResult(tinyRaw, detection, ocrEngineConfig, { sourceLanguage: options.sourceLanguage }).filter((item) => {
             const kana = String(item.text).match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu) || [];
             const longVowel = /^[\p{Script=Hiragana}\p{Script=Katakana}]{1,3}ー$/u.test(String(item.text));
             return item.confidence >= 0.82 && ((kana.length >= 2 && kana.length <= 5 && item.text.length <= 6) || longVowel);
