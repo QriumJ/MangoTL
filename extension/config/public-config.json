@@ -41,7 +41,7 @@
         {
             "id": "x",
             "name": "X",
-            "sourceLanguage": "en",
+            "sourceLanguage": "ja",
             "hostPatterns": ["x.com", "*.x.com"],
             "imageHostPatterns": ["pbs.twimg.com", "*.pbs.twimg.com"],
             "imageSelectors": ["img[src*='pbs.twimg.com']", "img[src*='twimg.com']"],
