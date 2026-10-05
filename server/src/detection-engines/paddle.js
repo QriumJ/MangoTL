@@ -1,4 +1,5 @@
 import * as ort from "onnxruntime-node";
+import { createHash } from "node:crypto";
 import { DetectionService } from "@snowfluke/ppu-paddle-ocr";
 import { fetchAndCacheModelPath } from "../utils/model-cache.js";
 import { ortSessionOptions } from "../utils/ort-options.js";
@@ -38,19 +39,37 @@ async function getDetector(config) {
 
         console.log(`${LOG} Initializing PaddleOCR detection...`);
         // 경로로 생성해야 가중치가 mmap로 올라가 세션 메모리가 크게 줄어든다
-        const modelPath = await fetchAndCacheModelPath(modelUrl, `paddle-det-${basename(modelUrl)}`, LOG);
+        const modelPath = await fetchAndCacheModelPath(
+            modelUrl,
+            `paddle-det-${createHash("sha256").update(modelUrl).digest("hex").slice(0, 12)}-${basename(modelUrl)}`,
+            LOG,
+        );
 
         const session = await ort.InferenceSession.create(modelPath, ortSessionOptions());
         console.log(`${LOG} Detection session ready (input: ${session.inputNames}, output: ${session.outputNames})`);
 
         const engine = config.processing?.engine || "canvas-native";
-        return new DetectionService(session, config.options || {}, config.debugging || {}, engine);
+        return new ManagedDetectionService(session, config.options || {}, config.debugging || {}, engine);
     })();
 
     detectorPromises.set(cacheKey, detectorPromise);
     detectorPromise.catch(() => detectorPromises.delete(cacheKey));
 
     return detectorPromise;
+}
+
+class ManagedDetectionService extends DetectionService {
+    async runInference(data, width, height) {
+        const input = new ort.Tensor("float32", data, [1, 3, height, width]);
+        let outputs;
+        try {
+            outputs = await this.session.run({ [this.session.inputNames[0]]: input });
+            return Float32Array.from(outputs[this.session.outputNames[0]].data);
+        } finally {
+            input.dispose();
+            for (const tensor of Object.values(outputs || {})) tensor.dispose();
+        }
+    }
 }
 
 function getDetectorCacheKey(config) {

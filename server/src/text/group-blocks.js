@@ -90,6 +90,7 @@ function normalizeOcrItem(item, index) {
         id: item.id || `ocr-${index + 1}`,
         text: String(item.text || "").trim(),
         confidence: typeof item.confidence === "number" ? item.confidence : null,
+        verticalLine: Boolean(item.verticalLine),
         coords: normalizeRect(item.coords),
         eraseCoords: normalizeRect(item.eraseCoords),
         darkBox: normalizeRect(item.darkBox),
@@ -181,11 +182,17 @@ function shouldJoinGroup(group, item) {
     const maxGap = Math.max(17, Math.min(rect.height, item.coords.height) * 0.7);
     const maxHorizontalGap = Math.max(17, Math.min(70, Math.min(rect.width, item.coords.width) * 0.5));
 
-    if (group.items.some((part) => isTallTextRegion(part.coords, [part])) && isTallTextRegion(item.coords, [item])) {
+    // Whole-balloon reads must not be merged with neighbouring balloons.
+    // Paddle's explicit vertical-line reads can join at normal column spacing.
+    const adjacentLines = item.verticalLine && group.items.every((part) => part.verticalLine);
+    if (!adjacentLines && group.items.some((part) => isTallTextRegion(part.coords, [part])) && isTallTextRegion(item.coords, [item])) {
         return false;
     }
 
-    return (xOverlap > 0.35 && gapY <= maxGap) || (yOverlap > 0.35 && gapX <= maxHorizontalGap);
+    // A column can be hundreds of pixels tall: its height is NOT a safe
+    // measure of line-leading. Use glyph width for vertical fragment gaps.
+    const maxVerticalGap = adjacentLines ? Math.max(17, Math.min(rect.width, item.coords.width) * 0.7) : maxGap;
+    return (xOverlap > 0.35 && gapY <= maxVerticalGap) || (yOverlap > 0.35 && gapX <= maxHorizontalGap);
 }
 
 function containsMostOfSmaller(a, b) {
@@ -221,7 +228,9 @@ function overlapRatio(aStart, aEnd, bStart, bEnd) {
 
 function toTextBlock(group, index) {
     const direction = group.coords.height > group.coords.width * 1.25 ? "vertical" : "horizontal";
-    const sortedItems = [...group.items].sort(direction === "vertical" ? topToBottomSort : readingSort);
+    const sortedItems = [...group.items].sort(
+        direction === "vertical" ? (group.items.every((item) => item.verticalLine) ? verticalLineSort : topToBottomSort) : readingSort,
+    );
     const sourceText = sortedItems.map((item) => item.text).join(direction === "vertical" ? "" : "\n");
     const confidenceValues = group.items.map((item) => item.confidence).filter((value) => value !== null);
 
@@ -233,6 +242,7 @@ function toTextBlock(group, index) {
         direction,
         confidence: confidenceValues.length ? confidenceValues.reduce((total, value) => total + value, 0) / confidenceValues.length : null,
         sourceBlockIds: group.items.map((item) => item.id),
+        verticalLine: group.items.every((item) => item.verticalLine),
         darkBox: group.items.find((item) => item.darkBox)?.darkBox || null,
         eraseCoords: group.items.find((item) => item.eraseCoords)?.eraseCoords || null,
         standalone: group.items.some((item) => item.standalone),
@@ -288,6 +298,11 @@ function readingSort(a, b) {
     }
 
     return aRect.y - bRect.y;
+}
+
+function verticalLineSort(a, b) {
+    const overlap = overlapRatio(a.coords.x, a.coords.x + a.coords.width, b.coords.x, b.coords.x + b.coords.width);
+    return overlap > 0.5 ? a.coords.y - b.coords.y : b.coords.x - a.coords.x;
 }
 
 function topToBottomSort(a, b) {

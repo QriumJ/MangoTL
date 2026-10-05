@@ -22,9 +22,11 @@
         },
         "languages": {
             "ja": {
-                "recognition": "https://media.githubusercontent.com/media/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/refs/heads/main/recognition/multi/japan/v3/japan_PP-OCRv3_mobile_rec_infer.onnx",
-                "charactersDictionary": "https://raw.githubusercontent.com/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/refs/heads/main/recognition/multi/japan/v3/japan_dict.txt",
-                "language": "japan"
+                "recognition": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/50c7eacafc52fa7bcf4194e8cd08e46f8558504b/inference.onnx",
+                "charactersDictionary": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/50c7eacafc52fa7bcf4194e8cd08e46f8558504b/inference.yml",
+                "dictionaryFormat": "paddle-yaml",
+                "language": "v6-medium",
+                "layout": "japanese"
             },
             "ko": {
                 "recognition": "https://media.githubusercontent.com/media/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/refs/heads/main/recognition/multi/korean/v5/korean_PP-OCRv5_mobile_rec_infer.onnx",

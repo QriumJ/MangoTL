@@ -52,8 +52,7 @@ You can check the full list below.
 
 ### Detection/OCR Engines
 
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) — detection, OCR
-- [manga-ocr](https://huggingface.co/mayocream/manga-ocr-onnx) (Japanese default) — OCR
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 
 ## Server Install and Setup
 

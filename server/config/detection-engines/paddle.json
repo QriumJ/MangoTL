@@ -16,6 +16,18 @@
             "paddingVertical": 0.4,
             "paddingHorizontal": 0.6
         },
+        "languages": {
+            "ja": {
+                "model": {
+                    "detection": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx/resolve/28fe5895c24fd108c19eb3e8479f4ab385fbfc62/inference.onnx"
+                },
+                "options": {
+                    "maxSideLength": 1536,
+                    "paddingVertical": 0.04,
+                    "paddingHorizontal": 0.04
+                }
+            }
+        },
         "debugging": {
             "debug": false,
             "verbose": false,

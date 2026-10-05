@@ -40,6 +40,10 @@ async function prepareCanvas(image) {
 
     const decoded = await loadImage(image.buffer);
     const canvas = createCanvas(decoded.width, decoded.height);
-    canvas.getContext("2d").drawImage(decoded, 0, 0);
+    const context = canvas.getContext("2d");
+    // OCR models expect an opaque page; transparent PNG pixels are not black ink.
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(decoded, 0, 0);
     return canvas;
 }

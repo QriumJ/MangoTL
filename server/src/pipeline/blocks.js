@@ -47,6 +47,7 @@ export function mergeTranslations(sourceBlocks, translatedBlocks, targetLanguage
                   : normalizeRenderDirection(translated?.direction, sourceBlock.direction, translatedText, targetLanguage),
             confidence: sourceBlock.confidence,
             sourceBlockIds: sourceBlock.sourceBlockIds,
+            verticalLine: Boolean(sourceBlock.verticalLine),
             tinyLabel: Boolean(sourceBlock.tinyLabel),
             standalone: Boolean(sourceBlock.standalone),
             confirmedRepeatedEffect: Boolean(sourceBlock.confirmedRepeatedEffect),

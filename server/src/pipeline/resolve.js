@@ -19,7 +19,7 @@ export function resolveProvider(config) {
 }
 
 export function resolveDetectionEngine(config, sourceLanguage) {
-    const language = sourceLanguage || config.defaultSourceLanguage;
+    const language = sourceLanguage || config.defaultSourceLanguage || config.appDefaults?.sourceLanguage;
     const id = getLanguageRouting(config, language)?.detectionEngine || config.defaultDetectionEngine;
     const engine = config.detectionEngines.find((candidate) => candidate.id === id);
 
@@ -27,11 +27,12 @@ export function resolveDetectionEngine(config, sourceLanguage) {
         throw new HttpError(400, "detection_engine_not_found", `Detection engine not found: ${id || "(none)"}`);
     }
 
-    return engine;
+    const overrides = engine.languages?.[language];
+    return overrides ? { ...engine, model: { ...engine.model, ...overrides.model }, options: { ...engine.options, ...overrides.options } } : engine;
 }
 
 export function resolveOcrEngine(config, sourceLanguage) {
-    const language = sourceLanguage || config.defaultSourceLanguage;
+    const language = sourceLanguage || config.defaultSourceLanguage || config.appDefaults?.sourceLanguage;
     const routedId = getLanguageRouting(config, language)?.ocrEngine;
 
     return prepareOcrEngine(findOcrEngine(config, routedId || config.defaultOcrEngine), language, config);
@@ -50,21 +51,6 @@ export function resolveTargetLanguageProbe(config, request) {
         // 판정 스크립트가 없는 목표 언어는 프로브를 아예 실행하지 않는다
         return targetLanguageProbeDescriptor(request.targetLanguage, engine);
     } catch {
-        return null;
-    }
-}
-
-/**
- * 보조 읽기(파스텔 배지 등)에 쓰는 얕은 프로브 엔진.
- * 라우팅에 supplementalProbeEngine이 있으면 우선하고, 없으면 paddle을 시도한다.
- */
-export function resolveSourceLanguageProbe(config, sourceLanguage) {
-    const routing = getLanguageRouting(config, sourceLanguage);
-    const engineId = routing?.supplementalProbeEngine || "paddle";
-    try {
-        return prepareOcrEngine(findOcrEngine(config, engineId), sourceLanguage, config);
-    } catch {
-        // 보조 읽기는 선택 기능 — 프로브 엔진이 없어도 파이프라인은 진행한다
         return null;
     }
 }

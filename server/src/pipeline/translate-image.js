@@ -1,6 +1,6 @@
 import { runOcr } from "../ocr/index.js";
 import { mergeTranslations, prepareBlocks } from "./blocks.js";
-import { resolveDetectionEngine, resolveOcrEngine, resolveProvider, resolveSourceLanguageProbe, resolveTargetLanguageProbe } from "./resolve.js";
+import { resolveDetectionEngine, resolveOcrEngine, resolveProvider, resolveTargetLanguageProbe } from "./resolve.js";
 import { inpaintImage } from "../text/inpaint/index.js";
 import { captureAdjacentPunctuation, restoreAdjacentPunctuation } from "../text/inpaint/preserve-punctuation.js";
 import { renderImage } from "../text/render/index.js";
@@ -59,7 +59,6 @@ export async function translateImage(request, config, options = {}) {
         const ocr = await runOcr(image, detectionEngine, ocrEngine, {
             sourceLanguage: request.sourceLanguage,
             targetLanguageProbe: resolveTargetLanguageProbe(config, request),
-            sourceLanguageProbe: resolveSourceLanguageProbe(config, request.sourceLanguage),
         });
         throwIfAborted(options.signal);
 

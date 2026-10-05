@@ -1,15 +1,12 @@
 import { runDetection } from "../detection-engines/index.js";
-import { recognize, ocrEngineSupports } from "./engines/index.js";
+import { recognize } from "./engines/index.js";
 import { normalizeOcrResult } from "./normalize.js";
-import { recoverSupplementalText } from "./supplemental/index.js";
 
 const LOG = "[MangoTL-OCR]";
 
 /**
  * Runs the full OCR pipeline: detection (engine-agnostic) followed by
- * recognition and post-normalization. When the selected engine declares
- * `supplementalReads`, a best-effort recovery pass adds text the first pass
- * missed.
+ * recognition and post-normalization.
  *
  * @returns {{ items: Array<{ id, text, confidence, coords }>, canvas, width: number, height: number }}
  */
@@ -38,23 +35,13 @@ export async function runOcr(image, detectionEngineConfig, ocrEngineConfig, opti
             }
         }
 
-        if (detection.boxes.length === 0 && !ocrEngineSupports(ocrEngineConfig.type, "supplementalReads")) {
+        if (detection.boxes.length === 0) {
             console.warn(`${LOG} No text regions detected`);
             return { items: [], canvas: detection.canvas, width: detection.width, height: detection.height };
         }
 
         const raw = await recognize(detection, ocrEngineConfig);
         const normalized = normalizeOcrResult(raw, detection, ocrEngineConfig, { sourceLanguage: options.sourceLanguage });
-
-        if (ocrEngineSupports(ocrEngineConfig.type, "supplementalReads")) {
-            // Supplemental recovery is best-effort: a failed extra pass must
-            // not take down text that was already recognized.
-            try {
-                await recoverSupplementalText(image, detection, raw, normalized, detectionEngineConfig, ocrEngineConfig, options);
-            } catch (error) {
-                console.warn(`${LOG} Supplemental recovery failed: ${error.message}`);
-            }
-        }
 
         console.log(`${LOG} Pipeline produced ${normalized.length} usable text items`);
         return { items: normalized, canvas: detection.canvas, width: detection.width, height: detection.height };

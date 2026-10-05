@@ -52,8 +52,7 @@ MangoTL은 다양한 웹사이트, 언어, AI 제공자 등을 지원합니다.
 
 ### 디텍션/OCR 엔진
 
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - 디텍션, OCR
-- [manga-ocr](https://huggingface.co/mayocream/manga-ocr-onnx) (일본어 기본값) - OCR
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 
 ## 서버 설치 및 설정
 

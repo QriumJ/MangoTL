@@ -5,28 +5,6 @@
     "type": "ocr",
     "settings": {
         "detectionEngine": "paddle",
-        "ocrEngine": "paddle",
-        "languages": {
-            "ja": {
-                "detectionEngine": "paddle",
-                "ocrEngine": "mangaocr"
-            },
-            "ko": {
-                "detectionEngine": "paddle",
-                "ocrEngine": "paddle"
-            },
-            "en": {
-                "detectionEngine": "paddle",
-                "ocrEngine": "paddle"
-            },
-            "de": {
-                "detectionEngine": "paddle",
-                "ocrEngine": "paddle"
-            },
-            "sv": {
-                "detectionEngine": "paddle",
-                "ocrEngine": "paddle"
-            }
-        }
+        "ocrEngine": "paddle"
     }
 }

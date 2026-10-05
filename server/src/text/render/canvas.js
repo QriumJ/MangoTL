@@ -117,7 +117,11 @@ function shortSpeechBalloonBox(block) {
     const length = [...String(block.originalText || "").replace(/\s+/gu, "")].length;
     if (!bubble || block.type !== "dialogue" || length > 8 || !source) return null;
     if (bubble.width < source.width * 1.2 || bubble.height < source.height * 1.5) return null;
-    if (bubble.width > source.width * 3 || bubble.height > source.height * 5) return null;
+    // A line detector returns a single narrow vertical column, not the full
+    // balloon. Allow its centred, bounded light surface to fit the target
+    // language horizontally instead of shrinking each syllable to column width.
+    const narrowVerticalLine = block.verticalLine && source.height > source.width * 2.5;
+    if (bubble.width > source.width * (narrowVerticalLine ? 8 : 3) || bubble.height > source.height * 5) return null;
     const centerX = source.x + source.width / 2;
     const centerY = source.y + source.height / 2;
     if (Math.abs(centerX - bubble.x - bubble.width / 2) > bubble.width * 0.22) return null;

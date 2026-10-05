@@ -5,7 +5,7 @@ import { scriptProfileFor } from "./script-profiles.js";
  * Normalizes a raw recognition result into the shape consumed by the
  * translation pipeline: an array of { id, text, confidence, coords }.
  *
- * Recognition engines (paddle, mangaocr) return:
+ * Recognition engines return:
  *   [{ text, box, confidence }]
  *
  * options.sourceLanguage가 주어지면 해당 언어의 스크립트 프로필 필터가
@@ -24,6 +24,7 @@ export function normalizeOcrResult(raw, detection, ocrEngineConfig, options = {}
             confidence: extractConfidence(item),
             coords: extractCoords(item),
             darkBox: item.darkBox || null,
+            verticalLine: Boolean(item.verticalLine),
         }))
         .filter((item) => isUsableOcrItem(item, filters, imageSize, script));
 

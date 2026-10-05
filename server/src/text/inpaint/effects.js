@@ -1,9 +1,9 @@
 import { cv } from "ppu-ocv";
-import { outlinedGlyphMask } from "../../ocr/supplemental/outlined.js";
+import { outlinedGlyphMask } from "./outlined-mask.js";
 import { eraseOutlinedArtCaption } from "../art-caption.js";
 import { clamp, parseHexColor } from "./shared.js";
 
-// Erasers for blocks flagged by the supplemental OCR finders. Each returns
+// Erasers for blocks flagged as outlined effects. Each returns
 // true when it handled the block so the caller can skip the generic path.
 export function eraseOutlinedFootstep(ctx, canvasWidth, canvasHeight, block) {
     const box = block.eraseCoords || block.coords;
